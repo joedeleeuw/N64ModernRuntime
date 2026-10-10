@@ -606,12 +606,16 @@ extern "C" void osViSetYScale(float scale) {
     }
 }
 
-extern "C" PTR(void) osViGetNextFramebuffer() {
-    return events_context.vi.get_next_state()->framebuffer;
+extern "C" PTR(void) osViGetNextFramebuffer(RDRAM_ARG1) {
+    PTR(void) framebuffer = events_context.vi.get_next_state()->framebuffer;
+    ultramodern::service_external_messages(PASS_RDRAM1);
+    return framebuffer;
 }
 
-extern "C" PTR(void) osViGetCurrentFramebuffer() {
-    return events_context.vi.get_cur_state()->framebuffer;
+extern "C" PTR(void) osViGetCurrentFramebuffer(RDRAM_ARG1) {
+    PTR(void) framebuffer = events_context.vi.get_cur_state()->framebuffer;
+    ultramodern::service_external_messages(PASS_RDRAM1);
+    return framebuffer;
 }
 
 void ultramodern::submit_rsp_task(RDRAM_ARG PTR(OSTask) task_) {

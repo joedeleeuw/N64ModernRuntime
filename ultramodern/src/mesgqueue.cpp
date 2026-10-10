@@ -67,6 +67,11 @@ void dequeue_external_messages(RDRAM_ARG1) {
     }
 }
 
+void ultramodern::service_external_messages(RDRAM_ARG1) {
+    dequeue_external_messages(PASS_RDRAM1);
+    ultramodern::check_running_queue(PASS_RDRAM1);
+}
+
 void ultramodern::wait_for_external_message(RDRAM_ARG1) {
     QueuedMessage to_send;
     external_messages.wait_dequeue(to_send);

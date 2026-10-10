@@ -27,11 +27,11 @@ extern "C" void osViSetSpecialFeatures_recomp(uint8_t* rdram, recomp_context* ct
 }
 
 extern "C" void osViGetCurrentFramebuffer_recomp(uint8_t* rdram, recomp_context* ctx) {
-    ctx->r2 = (gpr)(int32_t)osViGetCurrentFramebuffer();
+    ctx->r2 = (gpr)(int32_t)osViGetCurrentFramebuffer(rdram);
 }
 
 extern "C" void osViGetNextFramebuffer_recomp(uint8_t* rdram, recomp_context* ctx) {
-    ctx->r2 = (gpr)(int32_t)osViGetNextFramebuffer();
+    ctx->r2 = (gpr)(int32_t)osViGetNextFramebuffer(rdram);
 }
 
 extern "C" void osViSwapBuffer_recomp(uint8_t* rdram, recomp_context* ctx) {

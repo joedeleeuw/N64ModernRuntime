@@ -75,6 +75,7 @@ void set_message_queue_control(const MessageQueueControl& mqc);
 void enqueue_external_message_src(PTR(OSMesgQueue) mq, OSMesg msg, bool jam, EventMessageSource src);
 void enqueue_external_message(PTR(OSMesgQueue) mq, OSMesg msg, bool jam, bool requeue_if_blocked);
 void wait_for_external_message(RDRAM_ARG1);
+void service_external_messages(RDRAM_ARG1);
 void wait_for_external_message_timed(RDRAM_ARG1, u32 millis);
 
 // Thread scheduling.
