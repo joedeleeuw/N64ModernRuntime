@@ -134,6 +134,14 @@ static struct {
         PTR(OSMesgQueue) mq = NULLPTR;
         OSMesg msg = (OSMesg)0;
     } si;
+    // osSetEventMesg(OS_EVENT_VI) registration (kernel event table). Kept separate
+    // from the osViSetEvent channel in vi.states[]: games may use both at once
+    // (e.g. an OSSched on the event table plus a game-side VI wait), and real
+    // hardware delivers to both.
+    struct {
+        PTR(OSMesgQueue) mq = NULLPTR;
+        OSMesg msg = (OSMesg)0;
+    } vi_event;
     // The same message queue may be used for multiple events, so share a mutex for all of them
     std::mutex message_mutex;
     uint8_t* rdram;
@@ -165,6 +173,20 @@ extern "C" void osSetEventMesg(RDRAM_ARG OSEvent event_id, PTR(OSMesgQueue) mq_,
         case OS_EVENT_SI:
             events_context.si.msg = msg;
             events_context.si.mq = mq_;
+            break;
+        case OS_EVENT_VI:
+            events_context.vi_event.msg = msg;
+            events_context.vi_event.mq = mq_;
+            break;
+        default:
+            // A silently ignored event registration becomes a permanent deadlock in
+            // the game. Fail loudly instead of dropping it.
+            fprintf(stderr, "[events] osSetEventMesg: unhandled event id %u (mq=0x%08X msg=%p)\n",
+                    (unsigned)event_id, (unsigned)mq_, msg);
+            if (std::getenv("SWE1R_STRICT") != nullptr) {
+                std::abort();
+            }
+            break;
     }
 }
 
@@ -240,6 +262,30 @@ void vi_thread_func() {
             
             std::lock_guard lock{ events_context.message_mutex };
             ViState* cur_state = events_context.vi.get_cur_state();
+
+            // update_vi() returns early when the pending state has no OSViMode, so a
+            // game that only registers its retrace callback (via osSetEventMesg or
+            // osViSetEvent) without ever calling osViSetMode would never have that
+            // registration swapped into the current state and would wait forever.
+            if (cur_state->mq == NULLPTR) {
+                ViState* pending_state = events_context.vi.get_next_state();
+                if (pending_state->mq != NULLPTR) {
+                    cur_state->mq = pending_state->mq;
+                    cur_state->msg = pending_state->msg;
+                    cur_state->retrace_count = pending_state->retrace_count;
+                }
+            }
+            if (std::getenv("SWE1R_VI_LOG") != nullptr && (total_vis % 60) == 0) {
+                static int vi_logged = 0;
+                if (vi_logged < 6) {
+                    fprintf(stderr, "[VI] vis=%llu remaining=%d started=%d cur_mq=0x%08X cur_msg=0x%08X retrace_count=%u\n",
+                            (unsigned long long)total_vis, remaining_retraces,
+                            ultramodern::is_game_started() ? 1 : 0,
+                            (uint32_t)cur_state->mq, (uint32_t)cur_state->msg,
+                            (unsigned)cur_state->retrace_count);
+                    vi_logged++;
+                }
+            }
             if (remaining_retraces == 0) {
                 if (cur_state->mq != NULLPTR) {
                     // Send a message to the VI queue, and do not set it to be requeued if the queue was full.
@@ -247,6 +293,11 @@ void vi_thread_func() {
                     ultramodern::enqueue_external_message_src(cur_state->mq, cur_state->msg, false, ultramodern::EventMessageSource::Vi);
                 }
                 remaining_retraces = cur_state->retrace_count;
+            }
+            if (events_context.vi_event.mq != NULLPTR) {
+                // osSetEventMesg(OS_EVENT_VI) channel: fires every retrace,
+                // independently of the osViSetEvent channel above.
+                ultramodern::enqueue_external_message_src(events_context.vi_event.mq, events_context.vi_event.msg, false, ultramodern::EventMessageSource::Vi);
             }
             if (events_context.ai.mq != NULLPTR) {
                 // Send a message to the VI queue, and do not set it to be requeued if the queue was full for the same reason as the VI message above.

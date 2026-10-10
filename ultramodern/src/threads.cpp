@@ -176,6 +176,12 @@ void run_next_thread(RDRAM_ARG1) {
 
 void ultramodern::run_next_thread_and_wait(RDRAM_ARG1) {
     UltraThreadContext* cur_context = TO_PTR(OSThread, thread_self)->context;
+    // If the running queue is empty, every other thread is parked on a message
+    // queue or idling: pump external events (VI/AI/SP/DP) until one of them
+    // makes a thread runnable again instead of crashing on the empty queue.
+    while (ultramodern::thread_queue_empty(PASS_RDRAM ultramodern::running_queue)) {
+        ultramodern::wait_for_external_message(PASS_RDRAM1);
+    }
     run_next_thread(PASS_RDRAM1);
     wait_for_resumed(PASS_RDRAM cur_context);
 }

@@ -952,6 +952,14 @@ void recomp::start(const recomp::Configuration& cfg) {
     if (!alloc_failed) {
         // mprotect returns -1 on failure.
         alloc_failed = (mprotect(rdram, mem_size, PROT_READ | PROT_WRITE) == -1);
+        // Recompiled code writes N64 hardware registers (the RCP window at
+        // 0xA4000000-0xA4FFFFFF) with plain stores, and those addresses map to host
+        // offsets 0x24000000-0x24FFFFFF. Keep that window writable so the stores land
+        // in scratch memory instead of faulting on the guard region that exists to
+        // catch genuinely invalid RDRAM accesses.
+        if (!alloc_failed) {
+            alloc_failed = (mprotect(rdram + 0x24000000, 0x01000000, PROT_READ | PROT_WRITE) == -1);
+        }
         if (alloc_failed) {
             munmap(rdram, allocation_size);
         }

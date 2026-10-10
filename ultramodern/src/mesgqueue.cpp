@@ -1,4 +1,6 @@
 #include <bitset>
+#include <cstdio>
+#include <cstdlib>
 #include <thread>
 
 #include "blockingconcurrentqueue.h"
@@ -12,6 +14,12 @@ struct QueuedMessage {
     bool jam;
     bool requeue_if_blocked;
 };
+
+// Bring-up diagnostics: set SWE1R_MQ_LOG to trace every message queue operation.
+static bool mq_log_enabled() {
+    static const bool enabled = std::getenv("SWE1R_MQ_LOG") != nullptr;
+    return enabled;
+}
 
 static moodycamel::BlockingConcurrentQueue<QueuedMessage> external_messages {};
 std::bitset<32> requeue_enabled;
@@ -28,6 +36,10 @@ void ultramodern::set_message_queue_control(const ultramodern::MessageQueueContr
 }
 
 void ultramodern::enqueue_external_message_src(PTR(OSMesgQueue) mq, OSMesg msg, bool jam, EventMessageSource src) {
+    if (mq_log_enabled()) {
+        fprintf(stderr, "[MQ] external enqueue mq=0x%08X msg=0x%08X jam=%d src=%d requeue=%d\n",
+                (uint32_t)mq, (uint32_t)msg, jam ? 1 : 0, (int)src, requeue_enabled[static_cast<int>(src)] ? 1 : 0);
+    }
     external_messages.enqueue({mq, msg, jam, requeue_enabled[static_cast<int>(src)]});
 }
 
@@ -41,7 +53,12 @@ void dequeue_external_messages(RDRAM_ARG1) {
     QueuedMessage to_send;
     std::vector<QueuedMessage> requeued_messages{};
     while (external_messages.try_dequeue(to_send)) {
-        if (!do_send(PASS_RDRAM to_send.mq, to_send.mesg, to_send.jam, false) && to_send.requeue_if_blocked) {
+        const bool sent = do_send(PASS_RDRAM to_send.mq, to_send.mesg, to_send.jam, false);
+        if (mq_log_enabled()) {
+            fprintf(stderr, "[MQ] external deliver mq=0x%08X msg=0x%08X sent=%d requeue=%d\n",
+                    (uint32_t)to_send.mq, (uint32_t)to_send.mesg, sent ? 1 : 0, to_send.requeue_if_blocked ? 1 : 0);
+        }
+        if (!sent && to_send.requeue_if_blocked) {
             requeued_messages.push_back(to_send);
         }
     }
@@ -53,7 +70,12 @@ void dequeue_external_messages(RDRAM_ARG1) {
 void ultramodern::wait_for_external_message(RDRAM_ARG1) {
     QueuedMessage to_send;
     external_messages.wait_dequeue(to_send);
-    if (!do_send(PASS_RDRAM to_send.mq, to_send.mesg, to_send.jam, false) && to_send.requeue_if_blocked) {
+    bool sent = do_send(PASS_RDRAM to_send.mq, to_send.mesg, to_send.jam, false);
+    if (mq_log_enabled()) {
+        fprintf(stderr, "[MQ] pump deliver mq=0x%08X msg=0x%08X sent=%d requeue=%d\n",
+                (uint32_t)to_send.mq, (uint32_t)to_send.mesg, sent ? 1 : 0, to_send.requeue_if_blocked ? 1 : 0);
+    }
+    if (!sent && to_send.requeue_if_blocked) {
         external_messages.enqueue(to_send);
     }
 }
@@ -100,10 +122,20 @@ bool do_send(RDRAM_ARG PTR(OSMesgQueue) mq_, OSMesg msg, bool jam, bool block) {
     else {
         // Otherwise, yield this thread until the queue has room.
         while (MQ_IS_FULL(mq)) {
+            if (mq_log_enabled()) {
+                fprintf(stderr, "[MQ] thread %d blocked on send mq=0x%08X (full, count=%d)\n",
+                        (int)TO_PTR(OSThread, ultramodern::this_thread())->id, (uint32_t)mq_, MQ_GET_COUNT(mq));
+            }
             debug_printf("[Message Queue] Thread %d is blocked on send\n", TO_PTR(OSThread, ultramodern::this_thread())->id);
             ultramodern::thread_queue_insert(PASS_RDRAM GET_MEMBER(OSMesgQueue, mq_, blocked_on_send), ultramodern::this_thread());
             ultramodern::run_next_thread_and_wait(PASS_RDRAM1);
         }
+    }
+
+    if (mq_log_enabled()) {
+        fprintf(stderr, "[MQ] send mq=0x%08X msg=0x%08X jam=%d thread=%d\n",
+                (uint32_t)mq_, (uint32_t)msg, jam ? 1 : 0,
+                (int)TO_PTR(OSThread, ultramodern::this_thread())->id);
     }
     
     if (jam) {
@@ -138,6 +170,10 @@ bool do_recv(RDRAM_ARG PTR(OSMesgQueue) mq_, PTR(OSMesg) msg_, bool block) {
     } else {
         // Otherwise, yield this thread in a loop until the queue is no longer full
         while (MQ_IS_EMPTY(mq)) {
+            if (mq_log_enabled()) {
+                fprintf(stderr, "[MQ] thread %d blocked on recv mq=0x%08X (empty, count=%d)\n",
+                        (int)TO_PTR(OSThread, ultramodern::this_thread())->id, (uint32_t)mq_, MQ_GET_COUNT(mq));
+            }
             debug_printf("[Message Queue] Thread %d is blocked on receive\n", TO_PTR(OSThread, ultramodern::this_thread())->id);
             ultramodern::thread_queue_insert(PASS_RDRAM GET_MEMBER(OSMesgQueue, mq_, blocked_on_recv), ultramodern::this_thread());
             ultramodern::run_next_thread_and_wait(PASS_RDRAM1);

@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <ultramodern/ultra64.h>
 #include <ultramodern/ultramodern.hpp>
@@ -12,11 +14,19 @@ extern "C" void __osInitialize_common_recomp(uint8_t * rdram, recomp_context * c
 }
 
 extern "C" void osCreateThread_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (std::getenv("SWE1R_MQ_LOG") != nullptr) {
+        fprintf(stderr, "[MQ] createThread thread=0x%08X id=%d entry=0x%08X arg=0x%08X sp=0x%08X pri=%d\n",
+                (uint32_t)ctx->r4, (int32_t)ctx->r5, (int32_t)ctx->r6, (int32_t)ctx->r7,
+                (int32_t)MEM_W(0x10, ctx->r29), (int32_t)MEM_W(0x14, ctx->r29));
+    }
     osCreateThread(rdram, (int32_t)ctx->r4, (OSId)ctx->r5, (int32_t)ctx->r6, (int32_t)ctx->r7,
         (int32_t)MEM_W(0x10, ctx->r29), (OSPri)MEM_W(0x14, ctx->r29));
 }
 
 extern "C" void osStartThread_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (std::getenv("SWE1R_MQ_LOG") != nullptr) {
+        fprintf(stderr, "[MQ] startThread thread=0x%08X\n", (uint32_t)ctx->r4);
+    }
     osStartThread(rdram, (int32_t)ctx->r4);
 }
 
@@ -46,6 +56,10 @@ extern "C" void osGetThreadId_recomp(uint8_t * rdram, recomp_context * ctx) {
 }
 
 extern "C" void osCreateMesgQueue_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (std::getenv("SWE1R_MQ_LOG") != nullptr) {
+        fprintf(stderr, "[MQ] create mq=0x%08X buf=0x%08X count=%d\n",
+                (uint32_t)ctx->r4, (uint32_t)ctx->r5, (int32_t)ctx->r6);
+    }
     osCreateMesgQueue(rdram, (int32_t)ctx->r4, (int32_t)ctx->r5, (s32)ctx->r6);
 }
 
@@ -62,10 +76,18 @@ extern "C" void osJamMesg_recomp(uint8_t* rdram, recomp_context* ctx) {
 }
 
 extern "C" void osSetEventMesg_recomp(uint8_t* rdram, recomp_context* ctx) {
+    if (std::getenv("SWE1R_MQ_LOG") != nullptr) {
+        fprintf(stderr, "[MQ] setEventMesg event=0x%08X mq=0x%08X msg=0x%08X\n",
+                (uint32_t)ctx->r4, (uint32_t)ctx->r5, (uint32_t)ctx->r6);
+    }
     osSetEventMesg(rdram, (OSEvent)ctx->r4, (int32_t)ctx->r5, (OSMesg)ctx->r6);
 }
 
 extern "C" void osViSetEvent_recomp(uint8_t * rdram, recomp_context * ctx) {
+    if (std::getenv("SWE1R_MQ_LOG") != nullptr) {
+        fprintf(stderr, "[MQ] viSetEvent mq=0x%08X msg=0x%08X count=%u\n",
+                (uint32_t)ctx->r4, (uint32_t)ctx->r5, (uint32_t)ctx->r6);
+    }
     osViSetEvent(rdram, (int32_t)ctx->r4, (OSMesg)ctx->r5, (u32)ctx->r6);
 }
 

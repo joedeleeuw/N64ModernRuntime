@@ -1,12 +1,27 @@
 #include "ultramodern/ultramodern.hpp"
+#include <cstdio>
+#include <cstdlib>
+
+static bool sched_log_enabled() {
+    static const bool enabled = std::getenv("SWE1R_MQ_LOG") != nullptr;
+    return enabled;
+}
 
 void ultramodern::schedule_running_thread(RDRAM_ARG PTR(OSThread) t_) {
+    if (sched_log_enabled()) {
+        fprintf(stderr, "[MQ] schedule thread id=%d pri=%d\n",
+                TO_PTR(OSThread, t_)->id, (int)TO_PTR(OSThread, t_)->priority);
+    }
     debug_printf("[Scheduling] Adding thread %d to the running queue\n", TO_PTR(OSThread, t_)->id);
     thread_queue_insert(PASS_RDRAM running_queue, t_);
     TO_PTR(OSThread, t_)->state = OSThreadState::QUEUED;
 }
 
 void swap_to_thread(RDRAM_ARG OSThread *to) {
+    if (sched_log_enabled()) {
+        fprintf(stderr, "[MQ] swap from id=%d to id=%d pri=%d\n",
+                TO_PTR(OSThread, ultramodern::this_thread())->id, to->id, (int)to->priority);
+    }
     debug_printf("[Scheduling] Thread %d giving execution to thread %d\n", TO_PTR(OSThread, ultramodern::this_thread())->id, to->id);
     // Insert this thread in the running queue.
     ultramodern::thread_queue_insert(PASS_RDRAM ultramodern::running_queue, ultramodern::this_thread());
@@ -31,9 +46,15 @@ void ultramodern::check_running_queue(RDRAM_ARG1) {
 
 extern "C" void pause_self(RDRAM_ARG1) {
     while (true) {
+        // Hand execution to any queued thread, not only higher-priority ones: on
+        // real hardware a parked thread lets the dispatcher run the queue head,
+        // which rotates equal-priority threads (this game's idle thread relies on it).
+        if (!ultramodern::thread_queue_empty(PASS_RDRAM ultramodern::running_queue)) {
+            swap_to_thread(PASS_RDRAM TO_PTR(OSThread, ultramodern::thread_queue_pop(PASS_RDRAM ultramodern::running_queue)));
+            continue;
+        }
         // Wait until an external message arrives, then allow the next thread to run.
         ultramodern::wait_for_external_message(PASS_RDRAM1);
-        ultramodern::check_running_queue(PASS_RDRAM1);
     }
 }
 

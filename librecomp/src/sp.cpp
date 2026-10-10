@@ -12,6 +12,11 @@ bool dump_frame = false;
 extern "C" void osSpTaskStartGo_recomp(uint8_t* rdram, recomp_context* ctx) {
     //printf("[sp] osSpTaskStartGo(0x%08X)\n", (uint32_t)ctx->r4);
     OSTask* task = TO_PTR(OSTask, ctx->r4);
+    if (std::getenv("SWE1R_MQ_LOG") != nullptr) {
+        fprintf(stderr, "[SP] task start: type=%u ucode=0x%08X ucode_data=0x%08X data=0x%08X size=0x%08X\n",
+                (unsigned)task->t.type, (uint32_t)task->t.ucode, (uint32_t)task->t.ucode_data,
+                (uint32_t)task->t.data_ptr, (uint32_t)task->t.data_size);
+    }
     if (task->t.type == M_GFXTASK) {
         //printf("[sp] Gfx task: %08X\n", (uint32_t)ctx->r4);
     } else if (task->t.type == M_AUDTASK) {
