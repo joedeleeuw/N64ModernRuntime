@@ -521,6 +521,7 @@ extern "C" void osViSetMode(RDRAM_ARG PTR(OSViMode) mode_) {
     ViState* next_state = events_context.vi.get_next_state();
     next_state->mode = mode;
     next_state->control = next_state->mode->comRegs.ctrl;
+    next_state->state &= ~(VI_STATE_BLACK | VI_STATE_REPEATLINE);
 }
 
 #define OS_VI_GAMMA_ON          0x0001
